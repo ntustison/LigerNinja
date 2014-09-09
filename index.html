@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="generator" content="pandoc">
+  <meta name="author" content="Nick Tustison" />
+  <meta name="dcterms.date" content="2014-08-21" />
+  <title>ADNI data</title>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="stylesheet" href="index_files/reveal.js-2.6.1/css/reveal.min.css"/>
+
+  <!-- some tweaks to reveal css -->
+  <style type="text/css">
+    .reveal h1 { font-size: 2.0em; }
+    .reveal h2 { font-size: 1.5em;  }
+    .reveal h3 { font-size: 1.25em;	}
+    .reveal h4 { font-size: 1em;	}
+
+    .reveal .slides>section,
+    .reveal .slides>section>section {
+      padding: 0px 0px;
+    }
+
+     .reveal .title {
+        margin-top: 125px;
+        margin-bottom: 50px;
+     }
+
+    .reveal table {
+      border-width: 1px;
+      border-spacing: 2px;
+      border-style: dotted;
+      border-color: gray;
+      border-collapse: collapse;
+      font-size: 0.7em;
+    }
+
+    .reveal table th {
+      border-width: 1px;
+      padding-left: 10px;
+      padding-right: 25px;
+      font-weight: bold;
+      border-style: dotted;
+      border-color: gray;
+    }
+
+    .reveal table td {
+      border-width: 1px;
+      padding-left: 10px;
+      padding-right: 25px;
+      border-style: dotted;
+      border-color: gray;
+    }
+
+  </style>
+
+    <style type="text/css">code{white-space: pre;}</style>
+
+
+
+<link rel="stylesheet" href="index_files/reveal.js-2.6.1/css/theme/beige.css" id="theme">
+
+
+<link rel="stylesheet" media="print" href="index_files/reveal.js-2.6.1/css/print/pdf.css" />
+
+
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+
+<section>
+    <h1 class="title">ADNI data</h1>
+    <h2 class="author">Nick Tustison</h2>
+    <h3 class="date">August 21, 2014</h3>
+</section>
+
+<section><section id="demographics" class="titleslide slide level1"><h1>Demographics</h1></section><section id="gender-cardinality" class="slide level2">
+<h1>Gender cardinality</h1>
+<p>Total number of studies = 4423 (579 recalled).</p>
+<p>Demographics for non-recalled studies:</p>
+<p>ADNI1 Screening = 940 (m=544, f=396)</p>
+<p>ADNI1 Baseline = 186 (m=126, f=60)</p>
+<p>ADNI1/GO Month 6 = 810 (m=470, f=340)</p>
+<p>ADNI1/GO Month 12 = 770 (m=451, f=319)</p>
+<p>ADNI1/GO Month 18 = 256 (m=141, f=115)</p>
+<p>ADNI1/GO Month 24 = 560 (m=300, f=260)</p>
+<p>ADNI1/GO Month 36 = 320 (m=179, f=141)</p>
+<p>(Other time descriptors are “Unscheduled” (index = 495) and “No Visit Defined” (index = 670).</p>
+</section><section id="magnetic-field-strength" class="slide level2">
+<h1>Magnetic field strength</h1>
+<p>Total number of studies = 4423 (579 recalled).</p>
+<p>Demographics for non-recalled studies:</p>
+<p>ADNI1 Screening ~1.5 T = 792, ~3.0 T = 148</p>
+<p>ADNI1 Baseline ~1.5 T = 148, ~3.0 T = 38</p>
+<p>ADNI1/GO Month 6 ~1.5 T = 650, ~3.0 T = 160</p>
+<p>ADNI1/GO Month 12 ~1.5 T = 633, ~3.0 T = 137</p>
+<p>ADNI1/GO Month 18 ~1.5 T = 213, ~3.0 T = 43</p>
+<p>ADNI1/GO Month 24 ~1.5 T = 442, ~3.0 T = 118</p>
+<p>ADNI1/GO Month 36 ~1.5 T = 248, ~3.0 T = 72</p>
+</section><section id="initial-diagnosis" class="slide level2">
+<h1>Initial diagnosis</h1>
+<p>Number of Normal = 229 (m=110, f=119)</p>
+<p>Number of MCI = 250 (m=92, f=158)</p>
+<p>Number of LMCI = 151 (m=51, f=100)</p>
+<p>Number of AD = 188 (m=89, f=99)</p>
+</section><section id="age-distribution-per-dx" class="slide level2">
+<h1>Age distribution (per Dx)</h1>
+<p><img src="Figures/initialDiagnosis.png" /></p>
+</section></section>
+<section><section id="classification-prediction" class="titleslide slide level1"><h1>Classification prediction</h1></section></section>
+    </div>
+  </div>
+
+  <script src="index_files/reveal.js-2.6.1/lib/js/head.min.js"></script>
+  <script src="index_files/reveal.js-2.6.1/js/reveal.min.js"></script>
+
+  <script>
+
+      // Full list of configuration options available here:
+      // https://github.com/hakimel/reveal.js#configuration
+      Reveal.initialize({
+        controls: true,
+        progress: true,
+        history: true,
+        center: false,
+        transition: 'cube',
+
+        // Optional libraries used to extend on reveal.js
+        dependencies: []});
+    </script>
+
+  <!-- dynamically load mathjax for compatibility with self-contained -->
+  <script>
+    (function () {
+      var script = document.createElement("script");
+      script.type = "text/javascript";
+      script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+      document.getElementsByTagName("head")[0].appendChild(script);
+    })();
+  </script>
+
+  </body>
+</html>
