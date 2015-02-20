@@ -1,0 +1,438 @@
+---
+title: "ANTs longitudinal cortical thickness statistics: Region of interest version"
+output: pdf_document
+---
+
+# Objective
+Use regions of interest gained by multi-atlas labeling (MAL) to perform longitudinal statistics.
+
+```{r fig.width=8, fig.height=4, echo=TRUE}
+library(ANTsR)
+library(plyr)
+library(ggplot2)
+library(date)
+library(lme4)
+library(nlme)
+library(lmerTest)
+library(packHV)
+library(lattice)
+library(visreg)
+library(pheatmap)
+library(effects)
+verbose<-1
+basedir<-"/Users/stnava/Downloads/LongitudinalX/"
+setwd(basedir)
+malf<-antsImageRead("pennTemplate/labels/antsMalfLabels.nii.gz",3)
+data("DesikanKillianyTourville",package='ANTsR')
+myRoiDescriptor<-DesikanKillianyTourville
+studytype<-c("Volume","Thickness","MD")[1]
+WTVAL<-c(0,1.501,3,4.501)[woowoo]
+wtsigma<-(-3.0)
+outdir<-paste(basedir,'FTD_ROI_Long',studytype,round(WTVAL),sep='')
+dir.create(outdir, showWarnings = FALSE)
+WTVAL<-as.numeric(WTVAL)
+if ( studytype == 'MD' ) {
+  myRoiDescriptor<-data.frame(
+    label_number=as.numeric(1:1000),
+    label_name=paste("MDEanat",1:1000,sep='')
+    )
+}
+##############################
+##############################
+if ( ! exists("p") ) doggplot<-TRUE else doggplot<-FALSE
+```
+
+Define study demographic parameters.  
+We use the demographics file to construct
+the expected image file prefix.
+```{r fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE,error=FALSE}
+### Most important thing - load a csv
+### location of subject directories
+demog<-read.csv(paste(basedir,'./FTD_Long_Nov_2014.csv',sep='/'))
+demog<-read.csv(paste(basedir,'./3longMRI_27Nov2014.csv',sep='/'))
+expectedImagePrefix<-rep("NA",nrow(demog))
+haveSubjectTimePoint<-rep(FALSE,nrow(demog))
+for ( i in 1:nrow(demog) )
+  {
+  myid<-demog$INDDID[i]
+  rawdate<-as.character(demog$MRIDate[i])
+  rawdatesplit<-unlist(strsplit(rawdate,'/'))
+  locyear<-rawdatesplit[3]
+  locmon<-rawdatesplit[1]
+  locday<-rawdatesplit[2]
+  if (nchar(locday)==1) locday<-paste(0,locday,sep='')
+  if (nchar(locmon)==1) locmon<-paste(0,locmon,sep='')
+  expectedImagePrefix[i]<-paste(myid,'_',locyear,locmon,locday,sep='')
+  findfn<-Sys.glob(paste(basedir,'/Murray/',myid,
+    '/',expectedImagePrefix[i],"*",sep=''))
+  if ( length(findfn) > 0) haveSubjectTimePoint[i]<-TRUE
+  }
+if ( verbose > 1 )  print(sum(haveSubjectTimePoint))
+demog<-cbind(demog,expectedImagePrefix=expectedImagePrefix,
+  haveSubjectTimePoint=haveSubjectTimePoint)
+```
+
+Now find out how many subjects we have.
+```{r countdata, fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE}
+type1<-"*OASIS30_gm.nii.gz"
+type2<-"*CorticalThickness.nii.gz"
+if ( studytype == 'MD' ) {
+  type1<-paste(basedir,"pennTemplate/priors/prior03.nii.gz",sep='')
+  type2<-"*MD_NormalizedToGroupTemplate.nii.gz"
+  }
+# count the subjects
+subjectct<-0
+haveSubject<-rep(FALSE,length(demog$expectedImagePrefix))
+ct<-1
+demog$Use[   is.na(demog$Use) ]<-0
+for ( x in demog$expectedImagePrefix  )
+  {
+  if ( studytype == 'MD' ) {
+    temp<-type1
+    temp2<-Sys.glob(paste(basedir,"Murray/*/*/*/*",x,type2,sep=''))
+  } else {
+    temp<-Sys.glob(paste(basedir,"Murray/*/*/*/",x,type1,sep=''))
+    temp2<-Sys.glob(paste(basedir,"Murray/*/*/*",x,type2,sep=''))
+  }
+  if ( length(temp) > 0 & length(temp2) > 0 )# &
+    {
+    subjectct<-subjectct+1
+    haveSubject[ct]<-TRUE
+    }
+  if ( length(temp) > 1 ) stop(paste("multi-match error",x))
+  ct<-ct+1
+  }
+```
+
+
+Do [eigenanatomy](http://scholar.google.com/scholar?hl=en&q=eigenanatomy) on the baseline data.
+```{r eanat, fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE}
+  esegfn<-paste(outdir,"/md_eigseg.nii.gz",sep='')
+  if ( studytype == 'MD' & !file.exists(esegfn) ) {
+    eanatmask<-antsImageRead( type1, 3 )
+    eanatmask<-getMask(eanatmask,0.25,1,cleanup=2)
+    ilist<-list()
+    ct<-ict<-1
+    for ( x in demog$expectedImagePrefix[haveSubject]  )
+      {
+      temp2<-Sys.glob(paste(basedir,"Murray/*/*/*/*",x,type2,sep=''))
+      if ( haveSubject[ct] & demog$DaysBetweenMRI[ct] == 0 )
+        {
+        ilist[[ict]]<-antsImageRead(temp2,3)
+        ict<-ict+1
+        }
+      ct<-ct+1
+      }
+    eanatmat<-imageListToMatrix(ilist,eanatmask)
+    eanatmatLow<-lowrankRowMatrix( eanatmat, 10 )
+    eanat<-sparseDecom( eanatmatLow, eanatmask, sparseness=0.02,
+      nvecs=40,its=3,cthresh=500,smooth=0.5 )
+    eseg<-eigSeg( eanatmask, eanat$eig, FALSE  )
+    eseg[ eanatmask == 1]<-eseg[ eanatmask == 1]+1
+    antsImageWrite(eseg,esegfn)
+  } else eseg<-antsImageRead(esegfn,3)
+  if ( studytype == 'MD' ) {
+    myRoiDescriptor<-myRoiDescriptor[1:max(eseg),]
+  }
+```
+
+
+Now compute the csv summary files from the ROI images.  
+We compute volume, thickness and surface area for each
+region that is available in the DKT labels that we
+usually use.  The labels come from
+[Arno's Mindboggle](http://mindboggle.info/data.html).
+```{r getcsvs, fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE}
+nrois<-nrow(myRoiDescriptor)
+if ( ! exists("myroidf") )
+  {
+  myroidf<-matrix(rep(rep(0,nrois),subjectct),nrow=subjectct)
+  myroidf<-data.frame(myroidf)
+  myroidfThickness<-myroidf
+  myroidfArea<-myroidf
+  colnames(myroidf)<-myRoiDescriptor$label_name
+  colnames(myroidfThickness)<-myRoiDescriptor$label_name
+  ct<-1
+  for ( x in demog$expectedImagePrefix[haveSubject]  )
+    {
+    if ( studytype == 'MD' ) {
+      temp<-esegfn
+      temp2<-Sys.glob(paste(basedir,"Murray/*/*/*/*",x,type2,sep=''))
+    } else {
+      temp<-Sys.glob(paste(basedir,"Murray/*/*/*/",x,type1,sep=''))
+      temp2<-Sys.glob(paste(basedir,"Murray/*/*/*",x,type2,sep=''))
+    }
+    roi<-antsImageRead(temp,3)
+    thk<-antsImageRead(temp2,3)
+    if ( verbose ) print(paste(x,temp,temp2))
+    # index the images by the colnames of the data frame
+    # not fast but is clear and safe
+    spc<-antsGetSpacing(roi)
+    volelt<-spc[1]*spc[2]*spc[3]
+    tempfn<-paste(outdir,"/",x,studytype,'.csv',sep='')
+    if ( ! file.exists(tempfn) )
+      ImageMath(3,tempfn,"LabelStats",roi,thk)
+    roivals<-read.csv(tempfn)
+    colct<-1
+    for ( anat in colnames(myroidf) )
+      {
+      num<-as.numeric(myRoiDescriptor$LabelNum[
+        myRoiDescriptor$label_name==anat])
+      if ( sum(roivals$label == num ) == 1 )
+        {
+        #FIXME - someone else should check this!!!
+        ctval<-roivals$count[ roivals$label == num  ]
+        myvol<-ctval*volelt
+        mythk<-roivals$mass[ roivals$label == num  ]
+        myarea<-myvol/(mythk/ctval)
+        myroidf[ct,colct ]<-myvol
+        myroidfThickness[ct, colct]<-mythk
+        myroidfArea[ct, colct]<-myarea
+        }
+      colct<-colct+1
+      }
+    ct<-ct+1
+    }
+  }
+```
+
+Let's quickly investigate these results.
+```{r vizcorrs}
+  myroidf[ myroidf == 0 ]<-NA
+  myroidfThickness[ myroidfThickness == 0 ]<-NA
+  myroidfArea[ myroidfArea == 0 ]<-NA
+  meanthk<-rowMeans(myroidfThickness,na.rm=T)
+  meanvol<-rowMeans(myroidf,na.rm=T)
+  meanare<-rowMeans(myroidfArea,na.rm=T)
+  print(cor.test(meanthk,meanvol))
+#  pheatmap(antsrimpute(cor(data.matrix(myroidfArea))))
+```
+
+Run through the results with mixed effects modeling.
+
+```{r mixeff, fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE}
+# make an image to save results
+makevizimg<-function( m1 ) {
+  vizimg<-antsImageClone(m1);
+  vizimg[ vizimg > -Inf ]<-0
+  return(vizimg)
+  }
+subdemog<-demog[haveSubject,]
+mydx<-as.factor( subdemog$ClinicalPhenotype1 )
+mydx = factor(mydx,levels(mydx)[c(4,1,2,3,5,6,7)])
+rm("percentChangeByDX","pvalsByDX")
+bvol<-rowSums(  myroidf[  , !is.na(colMeans(myroidf)) ]  )
+bvol<-bvol/mean(bvol)
+for ( sid in subdemog$INDDID )
+  {
+  bvol[  subdemog$INDDID==sid ]<-
+        max( bvol[  subdemog$INDDID==sid ] )
+  }
+for ( jj in 1:ncol(myroidf) )
+  {
+  imging<-myroidf[,jj]
+  if ( studytype == 'Thickness'  )
+    imging<-myroidfThickness[,jj] / myroidf[,jj]
+  if ( studytype == 'MD'  )
+    imging<-myroidfThickness[,jj]
+  if ( ! any(is.na(imging)) )
+  {
+  # take care of age issue / allow study of controls
+  for ( sid in subdemog$INDDID )
+    {
+    if ( any( is.na(subdemog$FTDageOnset[  subdemog$INDDID==sid ]) ) )
+      subdemog$FTDageOnset[  subdemog$INDDID==sid ]<-
+        min(subdemog$AgeatMRI[  subdemog$INDDID==sid ])
+      subdemog$MonthsDuration[  subdemog$INDDID==sid ]<-
+       as.numeric( (subdemog$AgeatMRI[  subdemog$INDDID==sid ])-
+        min(subdemog$AgeatMRI[  subdemog$INDDID==sid ]) )*12.0
+    }
+  ttdp<-as.numeric(subdemog$LikelyTDP)
+#  ttdp<-as.numeric(subdemog$DefiniteTDP)
+  ttdp<-ttdp+1
+  ttdp[ mydx == "ELD CTRL" ]<-0 # these are controls
+  ttdp<-as.factor(ttdp)
+# do this in order to make time more interpretable wrt quadratic
+  timevarb<-as.numeric(subdemog$MonthsDuration)/12.0
+  timevarb[ timevarb>6 ]<-NA
+  timevar<-timevarb-mean(timevarb,na.rm=T)
+  locdf<-data.frame( img=imging, Sex=subdemog$Sex,
+    Age=subdemog$FTDageOnset,
+    ProfEdu=antsrimpute(as.numeric(subdemog$ProfessionalCat)+
+      as.numeric(subdemog$GraduateCat)),
+    Edu=antsrimpute(as.numeric(subdemog$Education)),
+    poi_dTime=timevar,
+    dT2=I(timevar^2),
+    poi_DX=(mydx),
+    poi_LTDP=ttdp, bvol=bvol,
+    sId=as.factor(subdemog$INDDID) )
+  myform<-as.formula( img ~ bvol + Age + Sex + Edu +
+    poi_LTDP  + (1+poi_dTime|sId) )
+  if ( studytype == 'MD' )
+     myform<-as.formula( img ~ 1 + Age + Sex + Edu +
+    poi_LTDP  + (1+poi_dTime|sId) )
+  #  (1+poi_dTime|sId) random slope + intercept
+  myweights<-exp( (timevar-WTVAL)^2 / wtsigma ) # ; hist(myweights)
+  myweights[ locdf$poi_DX == "ELD CTRL"  ]<-1
+  myweights[is.na(myweights)]<-0
+  myweights<-myweights/max(myweights)
+  if ( jj == 1 )  hist(myweights)
+  mdl<-lmer( myform , weights=myweights, data=(locdf))
+  locallabel<-colnames(myroidf)[jj]
+  smdl<-summary(mdl)$coeff
+
+  if ( verbose == 1 ) {
+    print(myRoiDescriptor$label_name[jj])
+    print(smdl)  
+    print(paste(locallabel))
+    }
+  if ( doggplot  ) {
+#    plot( effect("poi_DX",mdl))
+#    plot( effect("poi_dTime*poi_DX",mdl))
+    locdf2=locdf
+    rr<-residuals( lmer( img ~  (1|sId), data=locdf ))
+    locdf2$img<-rr
+    myform2<-as.formula( img ~ 1 + Age + Sex + Edu + poi_dTime*poi_DX)
+    mdl2<-lm( myform2, weights=myweights , data=(locdf2))
+    visreg(mdl2,"poi_dTime",by='poi_DX',main=locallabel)
+    p<-ggplot(locdf, aes( x = poi_dTime , y = img, group = sId)) +  geom_line() + geom_smooth(aes(group = 1), method="lm", size = 2, se = T) + geom_point(aes(colour = factor(poi_DX))) + ggtitle(locallabel)
+    plot(p)
+  }
+  labnum<-as.numeric( myRoiDescriptor$label_number[jj] )
+  if ( ncol(smdl) > 3 )
+  {
+  fxf<-fixef(mdl)
+  if ( studytype != "MD")
+  baseval<-(fxf[1]+ mean(locdf$bvol)*fxf[grep("bvol",names(fxf))]
+            + mean(locdf$Age)*fxf[grep("Age",names(fxf))]
+            + 0.5 *fxf[grep("Sex",names(fxf))] )
+  if ( studytype == "MD")
+  baseval<-(fxf[1]+
+            + mean(locdf$Age)*fxf[grep("Age",names(fxf))]
+            + 0.5 *fxf[grep("Sex",names(fxf))] )
+  percentChange<-(baseval+fxf[grep("poi_",names(fxf))])/baseval
+  if ( ! exists("percentChangeByDX") )
+    {
+    locnames<-names(fxf)[grep("poi_",names(fxf))]
+    locnames<-sub(":","_",locnames)
+    percentChangeByDX<-myroidf[1:length(percentChange),]*0
+    rownames(percentChangeByDX)<-locnames
+    }
+  baserow<-(nrow(percentChangeByDX)-length(percentChange))+1
+  locinds<-baserow:nrow(percentChangeByDX)
+  percentChangeByDX[locinds,jj]<-(1.0-percentChange)*100
+  if ( max(abs(percentChangeByDX[locinds,jj])) > 16000 ) derka
+  poiInds<-grep("poi_",rownames(smdl))
+  timemodelbase<-poiInds[1]
+  if ( ! exists("pvalsByDX") )
+    {
+    locnames<-rownames(smdl)[poiInds]
+    locnames<-sub(":","_",locnames)
+    pvalsByDX<-myroidf[1:length(poiInds),]*0
+    betasByDX<-myroidf[1:length(poiInds),]*0
+    pvalsByDX[]<-NA
+    rownames(pvalsByDX)<-locnames
+    rownames(betasByDX)<-locnames
+    }
+  pvalsByDX[,jj]<-smdl[poiInds,5] # FIXME
+  betasByDX[,jj]<-smdl[poiInds,1] # FIXME
+  } # smdl ncol
+  }
+###############################################################
+###############################################################
+}
+```
+
+
+Report some results
+```{r reportRegions}
+qvThresh<-0.01
+myMeth<-"BH"
+regionStats<-function( pvs, nm, pctchg ) {
+  print(nm)
+  mymin<-which.min(pvs)
+  print(paste(colnames(myroidf)[mymin],
+    p.adjust(pvs,myMeth)[mymin]))
+  qv<-p.adjust(pvs,myMeth)
+  if ( sum(qv <= qvThresh , na.rm=T ) >= 1 ) {
+    cth<-max( pvs[ qv <= qvThresh ] , na.rm=T)
+    print(paste("CriticalThresh",cth,"Rate",pctchg[mymin]))
+    } else {
+    cth<-min(pvs,na.rm=T)
+    print(paste("Min-Uncorrected-P-val",cth,"Rate",pctchg[mymin]))
+    }
+  return(cth)
+}
+for ( i in 1:nrow(pvalsByDX) )
+  {
+  regionStats( as.numeric(pvalsByDX[i,]),
+               rownames(pvalsByDX)[i],
+               as.numeric(percentChangeByDX[i,]) )
+  }
+```
+
+
+Set up visualization: see `antsSurfViz.sh`.
+```{r vizsurf}
+# write the images then do some system calls to antsSurf
+opre<-paste(outdir,'/malf_viz_',studytype,sep='')
+write.csv(percentChangeByDX,paste(opre,"Rates.csv",sep=''),row.names=F)
+write.csv(pvalsByDX,paste(opre,"PVals.csv",sep=''),row.names=F)
+```
+
+## Heatmap of all region atrophy rates
+
+```{r ratehm}
+modperc<-percentChangeByDX[, ] # !is.na(colMeans(percentChangeByDX))
+modpv<-pvalsByDX[,  ]# !is.na(colMeans(pvalsByDX))
+qv<-data.matrix(modpv)
+# maybe this is too conservative ... correcting the full matrix?
+# qv<-matrix(p.adjust(data.matrix(modpv),method=myMeth),nrow=nrow(modpv))
+for ( i in 1:nrow(qv) )
+  qv[i,]<-p.adjust(as.numeric(modpv[i,]),method=myMeth)
+colnames(qv)<-colnames(pvalsByDX)# [!is.na(colMeans(pvalsByDX))]
+rownames(qv)<-rownames(pvalsByDX)
+write.csv(qv,paste(opre,"QVals.csv",sep=''),row.names=F)
+qrates<-percentChangeByDX# [,!is.na(colMeans(pvalsByDX))]
+for ( k in 1:nrow(qv) ) {
+  slct<-( qv[k,]<=qvThresh )
+  slct[is.na(slct)]<-FALSE
+  print(qrates[k,slct])
+  }
+```
+
+```{r makevizimgs}
+# for each reasonable region, map the rate to the malf image
+if ( studytype=='MD') malf<-antsImageClone( eseg )
+for ( k in 1:nrow(qv) ) {
+  vizimg<-makevizimg( malf )
+  bvizimg<-makevizimg( malf )
+  slct<-( qv[k,]<=qvThresh )
+  slct[is.na(slct)]<-FALSE
+  names(slct)<-colnames(pvalsByDX)
+  siginds<-which( slct )
+  if ( length(siginds) > 0 )
+  for ( j in 1:length(siginds) )
+    {
+    nm<-names(siginds)[j]
+    labnum<-which(colnames(myroidf)==nm)
+    labnum<-as.numeric( myRoiDescriptor$label_number[labnum] )
+    lqrt<-qrates[k,siginds[j]]
+    if ( lqrt < 0 & studytype != 'MD') lqrt<-0
+    if ( studytype == 'MD' ) scl<-1.0 else scl<-(-1.0)
+    lbeta<-betasByDX[k,siginds[j]]*scl
+    vizimg[ malf == labnum ]<-lqrt*(scl*(-1.0))
+    bvizimg[ malf == labnum ]<-lbeta
+   # if ( verbose ) print(paste(lqrt,lbeta,1.0-qv[k,siginds[j]]))
+    }
+  onm<-paste(opre,rownames(qrates)[k],studytype,'Rate.nii.gz',sep='')
+  antsImageWrite(vizimg,onm)
+  onm<-paste(opre,rownames(betasByDX)[k],studytype,'Beta.nii.gz',sep='')
+  antsImageWrite(bvizimg,onm)
+  }
+rownames(myroidf)<-demog$expectedImagePrefix[haveSubject]
+rownames(myroidfThickness)<-demog$expectedImagePrefix[haveSubject]
+write.csv(myroidf,paste(opre,studytype,'a.csv',sep=''))
+write.csv(myroidfThickness,paste(opre,studytype,'b.csv',sep=''))
+print(paste("TODO: Mean_Diffusion_Labels && TDP_3_Group"))
+```
