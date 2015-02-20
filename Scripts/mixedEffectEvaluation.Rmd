@@ -19,24 +19,21 @@ library(lattice)
 library(visreg)
 library(pheatmap)
 library(effects)
+##### define parameters #####
 verbose<-1
-basedir<-"/Users/stnava/Downloads/LongitudinalX/"
+basedir<-"./Data/"
 setwd(basedir)
-malf<-antsImageRead("pennTemplate/labels/antsMalfLabels.nii.gz",3)
 data("DesikanKillianyTourville",package='ANTsR')
 myRoiDescriptor<-DesikanKillianyTourville
-studytype<-c("Volume","Thickness","MD")[1]
-WTVAL<-c(0,1.501,3,4.501)[woowoo]
-wtsigma<-(-3.0)
-outdir<-paste(basedir,'FTD_ROI_Long',studytype,round(WTVAL),sep='')
+woowoo<-1 # selects the weight value
+WTVAL<-c(0,1)[woowoo]
+wtsigma<-(-300.0)
+studytype<-"TEST"
+outdir<-paste('/tmp/ADNIMXF_',studytype,round(WTVAL),sep='')
 dir.create(outdir, showWarnings = FALSE)
+p<-TRUE # do plots
+##### parameters done #####
 WTVAL<-as.numeric(WTVAL)
-if ( studytype == 'MD' ) {
-  myRoiDescriptor<-data.frame(
-    label_number=as.numeric(1:1000),
-    label_name=paste("MDEanat",1:1000,sep='')
-    )
-}
 ##############################
 ##############################
 if ( ! exists("p") ) doggplot<-TRUE else doggplot<-FALSE
