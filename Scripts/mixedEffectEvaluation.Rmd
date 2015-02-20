@@ -45,28 +45,30 @@ the expected image file prefix.
 ```{r fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE,error=FALSE}
 ### Most important thing - load a csv
 ### location of subject directories
-demog<-read.csv(paste(basedir,'./FTD_Long_Nov_2014.csv',sep='/'))
-demog<-read.csv(paste(basedir,'./3longMRI_27Nov2014.csv',sep='/'))
-expectedImagePrefix<-rep("NA",nrow(demog))
-haveSubjectTimePoint<-rep(FALSE,nrow(demog))
+demog<-read.csv(paste(basedir,'adniCrossSectionalAntsSubset.csv',sep='/'))
+ageAtBaseline<-rep(NA,nrow(demog))
+deltaTime<-rep(NA,nrow(demog))
+baseval1<-"Baseline"
+baseval2<-"Screening"
 for ( i in 1:nrow(demog) )
   {
-  myid<-demog$INDDID[i]
-  rawdate<-as.character(demog$MRIDate[i])
-  rawdatesplit<-unlist(strsplit(rawdate,'/'))
-  locyear<-rawdatesplit[3]
-  locmon<-rawdatesplit[1]
-  locday<-rawdatesplit[2]
-  if (nchar(locday)==1) locday<-paste(0,locday,sep='')
-  if (nchar(locmon)==1) locmon<-paste(0,locmon,sep='')
-  expectedImagePrefix[i]<-paste(myid,'_',locyear,locmon,locday,sep='')
-  findfn<-Sys.glob(paste(basedir,'/Murray/',myid,
-    '/',expectedImagePrefix[i],"*",sep=''))
-  if ( length(findfn) > 0) haveSubjectTimePoint[i]<-TRUE
+  myid<-demog$ID[i]
+  rawvisit<-as.character(demog$VISIT[i])
+  numerictime<-strsplit( rawvisit, " " )[[1]]
+  numerictime<-numerictime[ length(numerictime) ]
+  if (  numerictime %in% c(baseval1,baseval2,"6","12","18","24","36") )
+    {
+    if ( numerictime == baseval1 | numerictime == baseval2 )
+      {
+      numerictime<-0
+      } else numerictime<-as.numeric( numerictime )
+    deltaTime[i]<-numerictime
+    ageAtBaseline[i]<-min(  demog$AGE[ demog$ID == myid  ] )
+    }
   }
 if ( verbose > 1 )  print(sum(haveSubjectTimePoint))
-demog<-cbind(demog,expectedImagePrefix=expectedImagePrefix,
-  haveSubjectTimePoint=haveSubjectTimePoint)
+demog<-cbind(demog,ageAtBaseline=ageAtBaseline,
+  deltaTime=deltaTime)
 ```
 
 Now find out how many subjects we have.
@@ -102,96 +104,12 @@ for ( x in demog$expectedImagePrefix  )
 ```
 
 
-Do [eigenanatomy](http://scholar.google.com/scholar?hl=en&q=eigenanatomy) on the baseline data.
-```{r eanat, fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE}
-  esegfn<-paste(outdir,"/md_eigseg.nii.gz",sep='')
-  if ( studytype == 'MD' & !file.exists(esegfn) ) {
-    eanatmask<-antsImageRead( type1, 3 )
-    eanatmask<-getMask(eanatmask,0.25,1,cleanup=2)
-    ilist<-list()
-    ct<-ict<-1
-    for ( x in demog$expectedImagePrefix[haveSubject]  )
-      {
-      temp2<-Sys.glob(paste(basedir,"Murray/*/*/*/*",x,type2,sep=''))
-      if ( haveSubject[ct] & demog$DaysBetweenMRI[ct] == 0 )
-        {
-        ilist[[ict]]<-antsImageRead(temp2,3)
-        ict<-ict+1
-        }
-      ct<-ct+1
-      }
-    eanatmat<-imageListToMatrix(ilist,eanatmask)
-    eanatmatLow<-lowrankRowMatrix( eanatmat, 10 )
-    eanat<-sparseDecom( eanatmatLow, eanatmask, sparseness=0.02,
-      nvecs=40,its=3,cthresh=500,smooth=0.5 )
-    eseg<-eigSeg( eanatmask, eanat$eig, FALSE  )
-    eseg[ eanatmask == 1]<-eseg[ eanatmask == 1]+1
-    antsImageWrite(eseg,esegfn)
-  } else eseg<-antsImageRead(esegfn,3)
-  if ( studytype == 'MD' ) {
-    myRoiDescriptor<-myRoiDescriptor[1:max(eseg),]
-  }
-```
-
 
 Now compute the csv summary files from the ROI images.  
 We compute volume, thickness and surface area for each
 region that is available in the DKT labels that we
 usually use.  The labels come from
 [Arno's Mindboggle](http://mindboggle.info/data.html).
-```{r getcsvs, fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE}
-nrois<-nrow(myRoiDescriptor)
-if ( ! exists("myroidf") )
-  {
-  myroidf<-matrix(rep(rep(0,nrois),subjectct),nrow=subjectct)
-  myroidf<-data.frame(myroidf)
-  myroidfThickness<-myroidf
-  myroidfArea<-myroidf
-  colnames(myroidf)<-myRoiDescriptor$label_name
-  colnames(myroidfThickness)<-myRoiDescriptor$label_name
-  ct<-1
-  for ( x in demog$expectedImagePrefix[haveSubject]  )
-    {
-    if ( studytype == 'MD' ) {
-      temp<-esegfn
-      temp2<-Sys.glob(paste(basedir,"Murray/*/*/*/*",x,type2,sep=''))
-    } else {
-      temp<-Sys.glob(paste(basedir,"Murray/*/*/*/",x,type1,sep=''))
-      temp2<-Sys.glob(paste(basedir,"Murray/*/*/*",x,type2,sep=''))
-    }
-    roi<-antsImageRead(temp,3)
-    thk<-antsImageRead(temp2,3)
-    if ( verbose ) print(paste(x,temp,temp2))
-    # index the images by the colnames of the data frame
-    # not fast but is clear and safe
-    spc<-antsGetSpacing(roi)
-    volelt<-spc[1]*spc[2]*spc[3]
-    tempfn<-paste(outdir,"/",x,studytype,'.csv',sep='')
-    if ( ! file.exists(tempfn) )
-      ImageMath(3,tempfn,"LabelStats",roi,thk)
-    roivals<-read.csv(tempfn)
-    colct<-1
-    for ( anat in colnames(myroidf) )
-      {
-      num<-as.numeric(myRoiDescriptor$LabelNum[
-        myRoiDescriptor$label_name==anat])
-      if ( sum(roivals$label == num ) == 1 )
-        {
-        #FIXME - someone else should check this!!!
-        ctval<-roivals$count[ roivals$label == num  ]
-        myvol<-ctval*volelt
-        mythk<-roivals$mass[ roivals$label == num  ]
-        myarea<-myvol/(mythk/ctval)
-        myroidf[ct,colct ]<-myvol
-        myroidfThickness[ct, colct]<-mythk
-        myroidfArea[ct, colct]<-myarea
-        }
-      colct<-colct+1
-      }
-    ct<-ct+1
-    }
-  }
-```
 
 Let's quickly investigate these results.
 ```{r vizcorrs}
@@ -208,12 +126,6 @@ Let's quickly investigate these results.
 Run through the results with mixed effects modeling.
 
 ```{r mixeff, fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE}
-# make an image to save results
-makevizimg<-function( m1 ) {
-  vizimg<-antsImageClone(m1);
-  vizimg[ vizimg > -Inf ]<-0
-  return(vizimg)
-  }
 subdemog<-demog[haveSubject,]
 mydx<-as.factor( subdemog$ClinicalPhenotype1 )
 mydx = factor(mydx,levels(mydx)[c(4,1,2,3,5,6,7)])
