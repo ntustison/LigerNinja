@@ -37,7 +37,7 @@ WTVAL<-as.numeric(WTVAL)
 ##############################
 ##############################
 if ( ! exists("p") ) doggplot<-TRUE else doggplot<-FALSE
-doggplot<-TRUE
+doggplot<-FALSE
 ```
 
 Define study demographic parameters.  
@@ -46,7 +46,10 @@ the expected image file prefix.
 ```{r fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE,error=FALSE}
 ### Most important thing - load a csv
 ### location of subject directories
-demog<-read.csv(paste(basedir,'Data/adniCrossSectionalAntsSubset.csv',sep='/'))
+demogCross<-read.csv(paste(basedir,'Data/adniCrossSectionalAntsSubset.csv',sep='/'))
+demogLong<-read.csv(paste(basedir,'Data/adniLongitudinalAntsSubset.csv',sep='/'))
+demog<-demogCross
+demog<-demogLong
 ageAtBaseline<-rep(NA,nrow(demog))
 bvAtBaseline<-rep(NA,nrow(demog))
 deltaTime<-rep(NA,nrow(demog))
@@ -121,7 +124,7 @@ mydx = factor(mydx,levels(mydx)[c(4,3,2,1)])
 rm("percentChangeByDX","pvalsByDX")
 for ( jj in 1:ncol(myroidf) )
   {
-  imging<-myroidf[,jj]
+  imging<-antsrimpute( myroidf[,jj] ) # FIXME check this
   if ( ! any(is.na(imging)) )
   {
   locdf<-data.frame( img=imging, SEX=subdemog$SEX,
@@ -179,10 +182,10 @@ for ( jj in 1:ncol(myroidf) )
   if ( max(abs(percentChangeByDX[locinds,jj])) > 16000 ) derka
   poiInds<-grep("poi_",rownames(smdl))
   timemodelbase<-poiInds[1]
-  if ( ! exists("pvalsByDX") )
+  locnames<-rownames(smdl)[poiInds]
+  locnames<-sub(":","_",locnames)
+  if ( ! exists('pvalsByDX') )
     {
-    locnames<-rownames(smdl)[poiInds]
-    locnames<-sub(":","_",locnames)
     pvalsByDX<-myroidf[1:length(poiInds),]*0
     betasByDX<-myroidf[1:length(poiInds),]*0
     pvalsByDX[]<-NA
@@ -201,7 +204,9 @@ for ( jj in 1:ncol(myroidf) )
 
 Report some results
 ```{r reportRegions}
-qvThresh<-0.01
+# FIXME - need to check this whole section and compare to 
+# section marked FIXME2
+qvThresh<-0.05
 myMeth<-"BH"
 regionStats<-function( pvs, nm, pctchg ) {
   print(nm)
@@ -240,7 +245,7 @@ write.csv(pvalsByDX,paste(opre,"PVals.csv",sep=''),row.names=F)
 ```{r ratehm}
 modperc<-percentChangeByDX[, ] # !is.na(colMeans(percentChangeByDX))
 modpv<-pvalsByDX[,  ] # !is.na(colMeans(pvalsByDX))
-qv<-data.matrix(modpv)
+qv<-data.matrix(modpv) # FIXME2
 # maybe this is too conservative ... correcting the full matrix?
 # qv<-matrix(p.adjust(data.matrix(modpv),method=myMeth),nrow=nrow(modpv))
 for ( i in 1:nrow(qv) )
