@@ -47,6 +47,7 @@ the expected image file prefix.
 ### location of subject directories
 demog<-read.csv(paste(basedir,'Data/adniCrossSectionalAntsSubset.csv',sep='/'))
 ageAtBaseline<-rep(NA,nrow(demog))
+bvAtBaseline<-rep(NA,nrow(demog))
 deltaTime<-rep(NA,nrow(demog))
 baseval1<-"Baseline"
 baseval2<-"Screening"
@@ -64,6 +65,7 @@ for ( i in 1:nrow(demog) )
       } else numerictime<-as.numeric( numerictime )
     deltaTime[i]<-numerictime
     ageAtBaseline[i]<-min(  demog$AGE[ demog$ID == myid  ] )
+    bvAtBaseline[i]<-max( demog$brain.volume[ demog$ID == myid  ] )
     }
   }
 if ( verbose > 1 )  print(sum(haveSubjectTimePoint))
@@ -127,7 +129,7 @@ for ( jj in 1:ncol(myroidf) )
     poi_dTime=subdemog$deltaTime,
     dT2=I(subdemog$deltaTime^2),
     poi_DX=(mydx),
-    bvol=subdemog$brain.volume,
+    bvol=bvAtBaseline[haveSubject],
     sId=as.factor(subdemog$ID) )
   myform<-as.formula( img ~ bvol + Age + SEX + MMSE +
     poi_dTime*poi_DX  + (1+poi_dTime|sId) )
@@ -192,7 +194,6 @@ for ( jj in 1:ncol(myroidf) )
 ###############################################################
 ###############################################################
 }
-derka
 ```
 
 
