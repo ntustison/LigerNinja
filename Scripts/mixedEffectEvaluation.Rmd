@@ -21,14 +21,14 @@ library(pheatmap)
 library(effects)
 ##### define parameters #####
 verbose<-1
-basedir<-"./Data/"
+basedir<-"/Users/stnava/data/LigerNinja/"
+studytype<-"volume"
 setwd(basedir)
 data("DesikanKillianyTourville",package='ANTsR')
 myRoiDescriptor<-DesikanKillianyTourville
 woowoo<-1 # selects the weight value
 WTVAL<-c(0,1)[woowoo]
 wtsigma<-(-300.0)
-studytype<-"TEST"
 outdir<-paste('/tmp/ADNIMXF_',studytype,round(WTVAL),sep='')
 dir.create(outdir, showWarnings = FALSE)
 p<-TRUE # do plots
@@ -45,7 +45,7 @@ the expected image file prefix.
 ```{r fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE,error=FALSE}
 ### Most important thing - load a csv
 ### location of subject directories
-demog<-read.csv(paste(basedir,'adniCrossSectionalAntsSubset.csv',sep='/'))
+demog<-read.csv(paste(basedir,'Data/adniCrossSectionalAntsSubset.csv',sep='/'))
 ageAtBaseline<-rep(NA,nrow(demog))
 deltaTime<-rep(NA,nrow(demog))
 baseval1<-"Baseline"
@@ -73,34 +73,10 @@ demog<-cbind(demog,ageAtBaseline=ageAtBaseline,
 
 Now find out how many subjects we have.
 ```{r countdata, fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE}
-type1<-"*OASIS30_gm.nii.gz"
-type2<-"*CorticalThickness.nii.gz"
-if ( studytype == 'MD' ) {
-  type1<-paste(basedir,"pennTemplate/priors/prior03.nii.gz",sep='')
-  type2<-"*MD_NormalizedToGroupTemplate.nii.gz"
-  }
 # count the subjects
-subjectct<-0
-haveSubject<-rep(FALSE,length(demog$expectedImagePrefix))
-ct<-1
-demog$Use[   is.na(demog$Use) ]<-0
-for ( x in demog$expectedImagePrefix  )
-  {
-  if ( studytype == 'MD' ) {
-    temp<-type1
-    temp2<-Sys.glob(paste(basedir,"Murray/*/*/*/*",x,type2,sep=''))
-  } else {
-    temp<-Sys.glob(paste(basedir,"Murray/*/*/*/",x,type1,sep=''))
-    temp2<-Sys.glob(paste(basedir,"Murray/*/*/*",x,type2,sep=''))
-  }
-  if ( length(temp) > 0 & length(temp2) > 0 )# &
-    {
-    subjectct<-subjectct+1
-    haveSubject[ct]<-TRUE
-    }
-  if ( length(temp) > 1 ) stop(paste("multi-match error",x))
-  ct<-ct+1
-  }
+haveSubject<-!is.na(demog$ageAtBaseline)
+subjectct<-sum( haveSubject )
+print(paste("We have",subjectct,"subjects"))
 ```
 
 
@@ -113,87 +89,59 @@ usually use.  The labels come from
 
 Let's quickly investigate these results.
 ```{r vizcorrs}
-  myroidf[ myroidf == 0 ]<-NA
-  myroidfThickness[ myroidfThickness == 0 ]<-NA
-  myroidfArea[ myroidfArea == 0 ]<-NA
+  myroidfThickness<-demog[, grep("thickness.",colnames(demog))]
+  myroidfVolume<-demog[, grep("volume.",colnames(demog))]
+  myroidfArea<-demog[, grep("area.",colnames(demog))]
+  myroidfJ<-demog[, grep("jacobian.",colnames(demog))]
   meanthk<-rowMeans(myroidfThickness,na.rm=T)
-  meanvol<-rowMeans(myroidf,na.rm=T)
+  meanvol<-rowMeans(myroidfVolume,na.rm=T)
   meanare<-rowMeans(myroidfArea,na.rm=T)
-  print(cor.test(meanthk,meanvol))
-#  pheatmap(antsrimpute(cor(data.matrix(myroidfArea))))
+  meanj<-rowMeans(myroidfJ,na.rm=T)
+  print(cor.test(meanthk,meanj))
+  print(cor.test(meanare,meanvol))
+  if ( studytype == 'volume'  )
+    myroidf<-myroidfVolume[haveSubject,]
+  if ( studytype == 'area'  )
+    myroidf<-myroidfArea[haveSubject,]
+  if ( studytype == 'thickness'  )
+    myroidf<-myroidfThickness[haveSubject,]
+  if ( studytype == 'jacobian'  )
+    myroidf<-myroidfJ[haveSubject,]
 ```
 
 Run through the results with mixed effects modeling.
 
 ```{r mixeff, fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE}
-subdemog<-demog[haveSubject,]
-mydx<-as.factor( subdemog$ClinicalPhenotype1 )
-mydx = factor(mydx,levels(mydx)[c(4,1,2,3,5,6,7)])
+subdemog<-demog[haveSubject,c(1:21,355,356)] # just demographics
+mydx<-as.factor( subdemog$DIAGNOSIS )
+mydx = factor(mydx,levels(mydx)[c(4,3,2,1)])
 rm("percentChangeByDX","pvalsByDX")
-bvol<-rowSums(  myroidf[  , !is.na(colMeans(myroidf)) ]  )
-bvol<-bvol/mean(bvol)
-for ( sid in subdemog$INDDID )
-  {
-  bvol[  subdemog$INDDID==sid ]<-
-        max( bvol[  subdemog$INDDID==sid ] )
-  }
 for ( jj in 1:ncol(myroidf) )
   {
   imging<-myroidf[,jj]
-  if ( studytype == 'Thickness'  )
-    imging<-myroidfThickness[,jj] / myroidf[,jj]
-  if ( studytype == 'MD'  )
-    imging<-myroidfThickness[,jj]
   if ( ! any(is.na(imging)) )
   {
-  # take care of age issue / allow study of controls
-  for ( sid in subdemog$INDDID )
-    {
-    if ( any( is.na(subdemog$FTDageOnset[  subdemog$INDDID==sid ]) ) )
-      subdemog$FTDageOnset[  subdemog$INDDID==sid ]<-
-        min(subdemog$AgeatMRI[  subdemog$INDDID==sid ])
-      subdemog$MonthsDuration[  subdemog$INDDID==sid ]<-
-       as.numeric( (subdemog$AgeatMRI[  subdemog$INDDID==sid ])-
-        min(subdemog$AgeatMRI[  subdemog$INDDID==sid ]) )*12.0
-    }
-  ttdp<-as.numeric(subdemog$LikelyTDP)
-#  ttdp<-as.numeric(subdemog$DefiniteTDP)
-  ttdp<-ttdp+1
-  ttdp[ mydx == "ELD CTRL" ]<-0 # these are controls
-  ttdp<-as.factor(ttdp)
-# do this in order to make time more interpretable wrt quadratic
-  timevarb<-as.numeric(subdemog$MonthsDuration)/12.0
-  timevarb[ timevarb>6 ]<-NA
-  timevar<-timevarb-mean(timevarb,na.rm=T)
-  locdf<-data.frame( img=imging, Sex=subdemog$Sex,
-    Age=subdemog$FTDageOnset,
-    ProfEdu=antsrimpute(as.numeric(subdemog$ProfessionalCat)+
-      as.numeric(subdemog$GraduateCat)),
-    Edu=antsrimpute(as.numeric(subdemog$Education)),
-    poi_dTime=timevar,
-    dT2=I(timevar^2),
+  locdf<-data.frame( img=imging, SEX=subdemog$SEX,
+    Age=subdemog$ageAtBaseline,
+    MMSE=subdemog$MMSCORE,
+    poi_dTime=subdemog$deltaTime,
+    dT2=I(subdemog$deltaTime^2),
     poi_DX=(mydx),
-    poi_LTDP=ttdp, bvol=bvol,
-    sId=as.factor(subdemog$INDDID) )
-  myform<-as.formula( img ~ bvol + Age + Sex + Edu +
-    poi_LTDP  + (1+poi_dTime|sId) )
-  if ( studytype == 'MD' )
-     myform<-as.formula( img ~ 1 + Age + Sex + Edu +
-    poi_LTDP  + (1+poi_dTime|sId) )
-  #  (1+poi_dTime|sId) random slope + intercept
-  myweights<-exp( (timevar-WTVAL)^2 / wtsigma ) # ; hist(myweights)
-  myweights[ locdf$poi_DX == "ELD CTRL"  ]<-1
+    bvol=subdemog$brain.volume,
+    sId=as.factor(subdemog$ID) )
+  myform<-as.formula( img ~ bvol + Age + SEX + MMSE +
+    poi_dTime*poi_DX  + (1+poi_dTime|sId) )
+  myweights<-exp( (subdemog$deltaTime-WTVAL)^2 / wtsigma ) 
+  myweights[ locdf$poi_DX == "Normal"  ]<-1
   myweights[is.na(myweights)]<-0
   myweights<-myweights/max(myweights)
   if ( jj == 1 )  hist(myweights)
   mdl<-lmer( myform , weights=myweights, data=(locdf))
   locallabel<-colnames(myroidf)[jj]
   smdl<-summary(mdl)$coeff
-
   if ( verbose == 1 ) {
-    print(myRoiDescriptor$label_name[jj])
+    print(locallabel)
     print(smdl)  
-    print(paste(locallabel))
     }
   if ( doggplot  ) {
 #    plot( effect("poi_DX",mdl))
@@ -201,24 +149,18 @@ for ( jj in 1:ncol(myroidf) )
     locdf2=locdf
     rr<-residuals( lmer( img ~  (1|sId), data=locdf ))
     locdf2$img<-rr
-    myform2<-as.formula( img ~ 1 + Age + Sex + Edu + poi_dTime*poi_DX)
+    myform2<-as.formula( img ~ 1 + Age + SEX + Edu + poi_dTime*poi_DX)
     mdl2<-lm( myform2, weights=myweights , data=(locdf2))
     visreg(mdl2,"poi_dTime",by='poi_DX',main=locallabel)
     p<-ggplot(locdf, aes( x = poi_dTime , y = img, group = sId)) +  geom_line() + geom_smooth(aes(group = 1), method="lm", size = 2, se = T) + geom_point(aes(colour = factor(poi_DX))) + ggtitle(locallabel)
     plot(p)
   }
-  labnum<-as.numeric( myRoiDescriptor$label_number[jj] )
   if ( ncol(smdl) > 3 )
   {
   fxf<-fixef(mdl)
-  if ( studytype != "MD")
   baseval<-(fxf[1]+ mean(locdf$bvol)*fxf[grep("bvol",names(fxf))]
             + mean(locdf$Age)*fxf[grep("Age",names(fxf))]
-            + 0.5 *fxf[grep("Sex",names(fxf))] )
-  if ( studytype == "MD")
-  baseval<-(fxf[1]+
-            + mean(locdf$Age)*fxf[grep("Age",names(fxf))]
-            + 0.5 *fxf[grep("Sex",names(fxf))] )
+            + 0.5 *fxf[grep("SEX",names(fxf))] )
   percentChange<-(baseval+fxf[grep("poi_",names(fxf))])/baseval
   if ( ! exists("percentChangeByDX") )
     {
@@ -250,6 +192,7 @@ for ( jj in 1:ncol(myroidf) )
 ###############################################################
 ###############################################################
 }
+derka
 ```
 
 
