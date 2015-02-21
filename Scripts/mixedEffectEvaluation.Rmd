@@ -22,7 +22,9 @@ library(effects)
 ##### define parameters #####
 verbose<-1
 basedir<-"/Users/stnava/data/LigerNinja/"
-studytype<-"volume"
+studytype<-"thickness"
+processingstyle<-'long'
+processingstyle<-'cross'
 setwd(basedir)
 data("DesikanKillianyTourville",package='ANTsR')
 myRoiDescriptor<-DesikanKillianyTourville
@@ -48,8 +50,8 @@ the expected image file prefix.
 ### location of subject directories
 demogCross<-read.csv(paste(basedir,'Data/adniCrossSectionalAntsSubset.csv',sep='/'))
 demogLong<-read.csv(paste(basedir,'Data/adniLongitudinalAntsSubset.csv',sep='/'))
-demog<-demogCross
-demog<-demogLong
+if ( processingstyle == 'cross' ) demog<-demogCross
+if ( processingstyle == 'long' ) demog<-demogLong
 ageAtBaseline<-rep(NA,nrow(demog))
 bvAtBaseline<-rep(NA,nrow(demog))
 deltaTime<-rep(NA,nrow(demog))
@@ -136,7 +138,7 @@ for ( jj in 1:ncol(myroidf) )
     bvol=bvAtBaseline[haveSubject],
     sId=as.factor(subdemog$ID) )
   myform<-as.formula( img ~ bvol + Age + SEX + MMSE +
-    poi_dTime*poi_DX  + (1+poi_dTime|sId) )
+    poi_dTime*poi_DX  + (1|sId) ) # + (1+poi_dTime|sId) )
   myweights<-exp( (subdemog$deltaTime-WTVAL)^2 / wtsigma ) 
   myweights[ locdf$poi_DX == "Normal"  ]<-1
   myweights[is.na(myweights)]<-0
