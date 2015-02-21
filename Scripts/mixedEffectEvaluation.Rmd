@@ -37,6 +37,7 @@ WTVAL<-as.numeric(WTVAL)
 ##############################
 ##############################
 if ( ! exists("p") ) doggplot<-TRUE else doggplot<-FALSE
+doggplot<-TRUE
 ```
 
 Define study demographic parameters.  
@@ -138,7 +139,8 @@ for ( jj in 1:ncol(myroidf) )
   myweights[is.na(myweights)]<-0
   myweights<-myweights/max(myweights)
   if ( jj == 1 )  hist(myweights)
-  mdl<-lmer( myform , weights=myweights, data=(locdf))
+#  mdl<-lmer( myform , weights=myweights, data=(locdf))
+  mdl<-lmer( myform , data=(locdf))
   locallabel<-colnames(myroidf)[jj]
   smdl<-summary(mdl)$coeff
   if ( verbose == 1 ) {
@@ -151,7 +153,7 @@ for ( jj in 1:ncol(myroidf) )
     locdf2=locdf
     rr<-residuals( lmer( img ~  (1|sId), data=locdf ))
     locdf2$img<-rr
-    myform2<-as.formula( img ~ 1 + Age + SEX + Edu + poi_dTime*poi_DX)
+    myform2<-as.formula( img ~ 1 + Age + SEX + MMSE + poi_dTime*poi_DX)
     mdl2<-lm( myform2, weights=myweights , data=(locdf2))
     visreg(mdl2,"poi_dTime",by='poi_DX',main=locallabel)
     p<-ggplot(locdf, aes( x = poi_dTime , y = img, group = sId)) +  geom_line() + geom_smooth(aes(group = 1), method="lm", size = 2, se = T) + geom_point(aes(colour = factor(poi_DX))) + ggtitle(locallabel)
@@ -287,4 +289,5 @@ for ( k in 1:nrow(qv) ) {
 #rownames(myroidfThickness)<-#
 #write.csv(myroidf,paste(opre,studytype,'a.csv',sep=''))
 #write.csv(myroidfThickness,paste(opre,studytype,'b.csv',sep=''))
+for ( i in 1:nrow(qv)) print(paste(rownames(qv)[i],min(qv[i,],na.rm=T)))
 ```
