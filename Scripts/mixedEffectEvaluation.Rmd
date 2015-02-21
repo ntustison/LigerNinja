@@ -237,16 +237,16 @@ write.csv(pvalsByDX,paste(opre,"PVals.csv",sep=''),row.names=F)
 
 ```{r ratehm}
 modperc<-percentChangeByDX[, ] # !is.na(colMeans(percentChangeByDX))
-modpv<-pvalsByDX[,  ]# !is.na(colMeans(pvalsByDX))
+modpv<-pvalsByDX[,  ] # !is.na(colMeans(pvalsByDX))
 qv<-data.matrix(modpv)
 # maybe this is too conservative ... correcting the full matrix?
 # qv<-matrix(p.adjust(data.matrix(modpv),method=myMeth),nrow=nrow(modpv))
 for ( i in 1:nrow(qv) )
   qv[i,]<-p.adjust(as.numeric(modpv[i,]),method=myMeth)
-colnames(qv)<-colnames(pvalsByDX)# [!is.na(colMeans(pvalsByDX))]
+colnames(qv)<-colnames(pvalsByDX) # [!is.na(colMeans(pvalsByDX))]
 rownames(qv)<-rownames(pvalsByDX)
 write.csv(qv,paste(opre,"QVals.csv",sep=''),row.names=F)
-qrates<-percentChangeByDX# [,!is.na(colMeans(pvalsByDX))]
+qrates<-percentChangeByDX # [,!is.na(colMeans(pvalsByDX))]
 for ( k in 1:nrow(qv) ) {
   slct<-( qv[k,]<=qvThresh )
   slct[is.na(slct)]<-FALSE
@@ -258,8 +258,8 @@ for ( k in 1:nrow(qv) ) {
 # for each reasonable region, map the rate to the malf image
 if ( studytype=='MD') malf<-antsImageClone( eseg )
 for ( k in 1:nrow(qv) ) {
-  vizimg<-makevizimg( malf )
-  bvizimg<-makevizimg( malf )
+#  vizimg<-makevizimg( malf )
+#  bvizimg<-makevizimg( malf )
   slct<-( qv[k,]<=qvThresh )
   slct[is.na(slct)]<-FALSE
   names(slct)<-colnames(pvalsByDX)
@@ -274,18 +274,17 @@ for ( k in 1:nrow(qv) ) {
     if ( lqrt < 0 & studytype != 'MD') lqrt<-0
     if ( studytype == 'MD' ) scl<-1.0 else scl<-(-1.0)
     lbeta<-betasByDX[k,siginds[j]]*scl
-    vizimg[ malf == labnum ]<-lqrt*(scl*(-1.0))
-    bvizimg[ malf == labnum ]<-lbeta
+  #  vizimg[ malf == labnum ]<-lqrt*(scl*(-1.0))
+  #  bvizimg[ malf == labnum ]<-lbeta
    # if ( verbose ) print(paste(lqrt,lbeta,1.0-qv[k,siginds[j]]))
     }
   onm<-paste(opre,rownames(qrates)[k],studytype,'Rate.nii.gz',sep='')
-  antsImageWrite(vizimg,onm)
+#  antsImageWrite(vizimg,onm)
   onm<-paste(opre,rownames(betasByDX)[k],studytype,'Beta.nii.gz',sep='')
-  antsImageWrite(bvizimg,onm)
+#  antsImageWrite(bvizimg,onm)
   }
-rownames(myroidf)<-demog$expectedImagePrefix[haveSubject]
-rownames(myroidfThickness)<-demog$expectedImagePrefix[haveSubject]
-write.csv(myroidf,paste(opre,studytype,'a.csv',sep=''))
-write.csv(myroidfThickness,paste(opre,studytype,'b.csv',sep=''))
-print(paste("TODO: Mean_Diffusion_Labels && TDP_3_Group"))
+#rownames(myroidf)<-#
+#rownames(myroidfThickness)<-#
+#write.csv(myroidf,paste(opre,studytype,'a.csv',sep=''))
+#write.csv(myroidfThickness,paste(opre,studytype,'b.csv',sep=''))
 ```
