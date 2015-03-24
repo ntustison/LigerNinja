@@ -186,7 +186,17 @@ x <- dev.off()
 ![](Figures/initialDiagnosis.png)
 
 
-# Classification prediction
+# CDRSB prediction w/ random forests
+
+## Cross sectional importance plot
+
+![](Figures/importanceCrossSectional.png)
 
 
+## Longitudinal importance plot
 
+![](Figures/importanceLongitudinal.png)
+
+## RMSE differences
+
+![](Figures/xrfRmse.png)
