@@ -6,7 +6,7 @@ output: pdf_document
 # Objective
 Use regions of interest gained by multi-atlas labeling (MAL) to perform longitudinal statistics.
 
-```{r fig.width=8, fig.height=4, echo=TRUE}
+```{r fig.width=8, fig.height=8, echo=TRUE}
 library(ANTsR)
 library(plyr)
 library(ggplot2)
@@ -22,7 +22,7 @@ library(effects)
 ##### define parameters #####
 verbose<-1
 basedir<-"/Users/stnava/data/LigerNinja/"
-studytype<-"thickness"
+studytype<-"jacobian"
 processingstyle<-'long'
 processingstyle<-'cross'
 setwd(basedir)
@@ -45,13 +45,14 @@ doggplot<-FALSE
 Define study demographic parameters.  
 We use the demographics file to construct
 the expected image file prefix.
-```{r fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE,error=FALSE}
+```{r fig.width=8, fig.height=8, echo=TRUE,warnings=FALSE,message=FALSE,error=FALSE}
 ### Most important thing - load a csv
 ### location of subject directories
 demogCross<-read.csv(paste(basedir,'Data/adniCrossSectionalAntsSubset.csv',sep='/'))
 demogLong<-read.csv(paste(basedir,'Data/adniLongitudinalAntsSubset.csv',sep='/'))
 if ( processingstyle == 'cross' ) demog<-demogCross
 if ( processingstyle == 'long' ) demog<-demogLong
+# demog[474,]<-NA # FIXM
 ageAtBaseline<-rep(NA,nrow(demog))
 bvAtBaseline<-rep(NA,nrow(demog))
 deltaTime<-rep(NA,nrow(demog))
@@ -71,6 +72,7 @@ for ( i in 1:nrow(demog) )
       } else numerictime<-as.numeric( numerictime )
     deltaTime[i]<-numerictime
     ageAtBaseline[i]<-min(  demog$AGE[ demog$ID == myid  ] )
+    deltaTime[i]<-demog$AGE[i]-ageAtBaseline[i]
     bvAtBaseline[i]<-max( demog$brain.volume[ demog$ID == myid  ] )
     }
   }
@@ -80,7 +82,7 @@ demog<-cbind(demog,ageAtBaseline=ageAtBaseline,
 ```
 
 Now find out how many subjects we have.
-```{r countdata, fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE}
+```{r countdata, fig.width=8, fig.height=8, echo=TRUE,warnings=FALSE,message=FALSE}
 # count the subjects
 haveSubject<-!is.na(demog$ageAtBaseline)
 subjectct<-sum( haveSubject )
@@ -119,7 +121,7 @@ Let's quickly investigate these results.
 
 Run through the results with mixed effects modeling.
 
-```{r mixeff, fig.width=8, fig.height=4, echo=TRUE,warnings=FALSE,message=FALSE}
+```{r mixeff, fig.width=8, fig.height=8, echo=TRUE,warnings=FALSE,message=FALSE}
 subdemog<-demog[haveSubject,c(1:21,355,356)] # just demographics
 mydx<-as.factor( subdemog$DIAGNOSIS )
 mydx = factor(mydx,levels(mydx)[c(4,3,2,1)])
@@ -181,7 +183,7 @@ for ( jj in 1:ncol(myroidf) )
   baserow<-(nrow(percentChangeByDX)-length(percentChange))+1
   locinds<-baserow:nrow(percentChangeByDX)
   percentChangeByDX[locinds,jj]<-(1.0-percentChange)*100
-  if ( max(abs(percentChangeByDX[locinds,jj])) > 16000 ) derka
+#  if ( max(abs(percentChangeByDX[locinds,jj])) > 16000 ) derka
   poiInds<-grep("poi_",rownames(smdl))
   timemodelbase<-poiInds[1]
   locnames<-rownames(smdl)[poiInds]
