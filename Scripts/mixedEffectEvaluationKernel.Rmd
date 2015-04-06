@@ -1,0 +1,425 @@
+---
+title: "ANTs longitudinal cortical thickness statistics: Region of interest version"
+output: pdf_document
+---
+
+# Objective
+Use regions of interest gained by multi-atlas labeling (MAL) to perform longitudinal statistics.
+
+```{r fig.width=8, fig.height=8, echo=TRUE}
+library(ANTsR)
+library(plyr)
+library(ggplot2)
+library(date)
+library(lme4)
+library(nlme)
+library(lmerTest)
+library(packHV)
+library(lattice)
+library(visreg)
+library(pheatmap)
+library(effects)
+library(knitr)
+##### define parameters #####
+verbose<-1
+basedir<-"/Users/stnava/data/LigerNinja/"
+studytype<-"thickness"
+processingstyle<-'long'
+processingstyle<-'cross'
+setwd(basedir)
+data("DesikanKillianyTourville",package='ANTsR')
+myRoiDescriptor<-DesikanKillianyTourville
+WTVAL<-c( 0, 1, 2 )
+wtsigma<-rep( 2.0, 3 )
+outdir<-paste( '/tmp/ADNIMXF_', studytype, sep='')
+dir.create( outdir, showWarnings = FALSE )
+p<-TRUE # do plots
+##### parameters done #####
+##############################
+##############################
+if ( ! exists("p") ) doggplot<-TRUE else doggplot<-FALSE
+doggplot<-FALSE
+```
+
+Define study demographic parameters.  
+We use the demographics file to construct
+the expected image file prefix.
+```{r fig.width=8, fig.height=8, echo=TRUE,warnings=FALSE,message=FALSE,error=FALSE}
+### Most important thing - load a csv
+### location of subject directories
+demogCross<-read.csv(paste(basedir,'Data/adniCrossSectionalAntsSubset.csv',sep='/'))
+demogLong<-read.csv(paste(basedir,'Data/adniLongitudinalAntsSubset.csv',sep='/'))
+if ( processingstyle == 'cross' ) demog<-demogCross
+if ( processingstyle == 'long' ) demog<-demogLong
+
+# sample the demog file for training
+sdem<-rep( c(1,2,3,4), nrow(demog) )[1:nrow(demog)]
+# demog<-demog[ sdem<3,   ]
+
+# demog[474,]<-NA # FIXM
+ageAtBaseline<-rep(NA,nrow(demog))
+bvAtBaseline<-rep(NA,nrow(demog))
+deltaTime<-rep(NA,nrow(demog))
+baseval1<-"Baseline"
+baseval2<-"Screening"
+for ( i in 1:nrow(demog) )
+  {
+  myid<-demog$ID[i]
+  rawvisit<-as.character(demog$VISIT[i])
+  numerictime<-strsplit( rawvisit, " " )[[1]]
+  numerictime<-numerictime[ length(numerictime) ]
+  if (  numerictime %in% c(baseval1,baseval2,"6","12","18","24","36") )
+    {
+    if ( numerictime == baseval1 | numerictime == baseval2 )
+      {
+      numerictime<-0
+      } else numerictime<-as.numeric( numerictime )
+    deltaTime[i]<-numerictime
+    ageAtBaseline[i]<-min(  demog$AGE[ demog$ID == myid  ] )
+    deltaTime[i]<-demog$AGE[i]-ageAtBaseline[i]
+    bvAtBaseline[i]<-max( demog$brain.volume[ demog$ID == myid  ] )
+    }
+  }
+if ( verbose > 1 )  print(sum(haveSubjectTimePoint))
+demog<-cbind(demog,ageAtBaseline=ageAtBaseline,
+  deltaTime=deltaTime)
+```
+
+Now find out how many subjects we have.
+```{r countdata, fig.width=8, fig.height=8, echo=TRUE,warnings=FALSE,message=FALSE}
+# count the subjects
+haveSubject<-!is.na(demog$ageAtBaseline)
+subjectct<-sum( haveSubject )
+print(paste("We have",subjectct,"subjects"))
+```
+
+
+
+Now compute the csv summary files from the ROI images.  
+We compute volume, thickness and surface area for each
+region that is available in the DKT labels that we
+usually use.  The labels come from
+[Arno's Mindboggle](http://mindboggle.info/data.html).
+
+Let's quickly investigate these results.
+```{r vizcorrs}
+  myroidfThickness<-demog[, grep("thickness.",colnames(demog))]
+  myroidfVolume<-demog[, grep("volume.",colnames(demog))]
+  myroidfArea<-demog[, grep("area.",colnames(demog))]
+  myroidfJ<-demog[, grep("jacobian.",colnames(demog))]
+  meanthk<-rowMeans(myroidfThickness,na.rm=T)
+  meanvol<-rowMeans(myroidfVolume,na.rm=T)
+  meanare<-rowMeans(myroidfArea,na.rm=T)
+  meanj<-rowMeans(myroidfJ,na.rm=T)
+  print(cor.test(meanthk,meanj))
+  print(cor.test(meanare,meanvol))
+  if ( studytype == 'volume'  )
+    myroidf<-myroidfVolume[haveSubject,]
+  if ( studytype == 'area'  )
+    myroidf<-myroidfArea[haveSubject,]
+  if ( studytype == 'thickness'  )
+    myroidf<-myroidfThickness[haveSubject,]
+  if ( studytype == 'jacobian'  )
+    myroidf<-myroidfJ[haveSubject,]
+myroidf<-antsrimpute( myroidf )
+```
+
+
+```{r permset}
+subdemog<-demog[haveSubject,c(1:21,355,356)] # just demographics
+mydx<-as.factor( subdemog$DIAGNOSIS )
+mydx = factor(mydx,levels(mydx)[c(4,3,2,1)])
+mydx[ mydx == "LMCI" ]<-"MCI"
+mydx = factor( mydx ) # make it just mci, ad, normal
+
+# set up diagnosis data frame for each unique subject
+uniqDX<-list()
+for ( sid in unique( subdemog$ID ) )
+  uniqDX[[ as.character(sid) ]]<-mydx[ subdemog$ID==sid ][1]
+uniqDX<-data.frame( uid=unique( subdemog$ID ),
+  path=unlist(uniqDX), pathperm=unlist(uniqDX)  )
+nctl<-sum( uniqDX$path=="Normal", na.rm=T )
+nmci<-sum( uniqDX$path=="MCI", na.rm=T )
+nad<-sum( uniqDX$path=="AD", na.rm=T )
+###################################
+rm("percentChangeByDX","pvalsByDX")
+# set up for permutation testing
+nperms<-500+1
+ndx<-2
+roisrch<-grep( "thickness.", colnames(demog) )
+names(roisrch)<-colnames(demog)[roisrch]
+roisrch<-roisrch[ grep("thickness",names(roisrch)) ]
+nroi<-length( roisrch )
+permarrayD0<-rep( 0, nperms*ndx*nroi )
+dim( permarrayD0 )<-c( ndx, nroi, nperms )
+permarrayD1<-rep( 0, nperms*ndx*nroi )
+dim( permarrayD1 )<-c( ndx, nroi, nperms )
+permarrayD2<-rep( 0, nperms*ndx*nroi )
+dim( permarrayD2 )<-c( ndx, nroi, nperms )
+permarrayL1<-rep( 0, nperms*ndx*nroi )
+dim( permarrayL1 )<-c( ndx, nroi, nperms )
+permarrayL2<-rep( 0, nperms*ndx*nroi )
+dim( permarrayL2 )<-c( ndx, nroi, nperms )
+```
+
+Run through the results with mixed effects modeling.
+
+```{r mixeff, fig.width=8, fig.height=8, echo=TRUE,warnings=FALSE,message=FALSE}
+# do tests
+pvdf1<-data.frame(  region=names(roisrch),  
+    D0=rep(NA, nroi ),
+    D1=rep(NA, nroi ),
+    D2=rep(NA, nroi ),
+    L1=rep(NA, nroi ),
+    L2=rep(NA, nroi ) )
+pvdf2<-pvdf1
+valdf1<-pvdf1
+valdf2<-pvdf1
+jj<-0
+for ( roival in roisrch )
+  {
+  jj<-jj+1
+  imging<-antsrimpute( myroidf[,jj] ) # FIXME check this
+  if ( ! any(is.na(imging)) )
+  {
+  locdf<-data.frame( img=imging, Sex=subdemog$SEX,
+    Age=subdemog$ageAtBaseline,
+    MMSE=subdemog$MMSCORE,
+    poi_dTime=( subdemog$deltaTime ),
+    dT2=I(subdemog$deltaTime^2),
+    kg=subdemog$WEIGHT_KG,
+    poi_DX=(mydx),
+    bvol=bvAtBaseline[haveSubject],
+    sId=as.factor(subdemog$ID) )
+  myform<-as.formula( img ~ 1 + Age + Sex + kg +
+    poi_DX   + (1|sId) ) #  + (1+poi_dTime|sId)
+  for ( lwtct in 1:length(WTVAL) )
+    {
+    myweights <-exp( -(subdemog$deltaTime-WTVAL[lwtct])^2 / wtsigma[lwtct] )
+    myweights[ locdf$poi_DX == "Normal"  ]<-1
+    myweights[is.na(myweights)]<-0
+    myweights<-myweights/max(myweights)
+    if ( jj == 1 )  hist(myweights)
+    mdl<-lmer( myform , weights=myweights, data=(locdf) )
+    locallabel<-names(roisrch)[jj]
+    #
+    smdl<-summary(mdl)$coeff
+    if ( lwtct == 1 ) {
+      permarrayD0[1,jj,1]   <- smdl[5,4]
+      if ( nrow(smdl) > 5 ) permarrayD0[2,jj,1]   <- smdl[6,4]
+      }
+    if ( lwtct == 2 ) {
+      permarrayD1[1,jj,1] <-   smdl[5,4]
+      permarrayL1[1,jj,1] <- ( smdl[5,4] - permarrayD0[1,jj,1] ) * -1
+      if ( nrow(smdl) > 5 ) {
+        permarrayD1[2,jj,1]<-smdl[6,4]
+        permarrayL1[2,jj,1]<-( smdl[6,4] - permarrayD0[2,jj,1] ) * -1
+        }
+      }
+    if ( lwtct == 3 ) {
+      permarrayD2[1,jj,1] <-   smdl[5,4]
+      permarrayL2[1,jj,1] <- ( smdl[5,4] - permarrayD1[1,jj,1] ) * -1
+      if ( nrow(smdl) > 5 ) {
+        permarrayD2[2,jj,1]<-smdl[6,4]
+        permarrayL2[2,jj,1]<-( smdl[6,4] - permarrayD1[2,jj,1] ) * -1
+        }
+      }
+    print( smdl )
+    }
+    for ( perm in 2:nperms )
+      {
+      plocdf<-locdf
+      permdx<-sample( uniqDX$path )
+      for ( sid in unique( locdf$sId ) ) {
+        selector <- plocdf$sId == sid
+        plocdf$poi_DX[ selector ]<-permdx[ uniqDX$uid == sid ]
+#        plocdf$poi_dTime[ selector ]<-sample(locdf$poi_dTime[selector])
+        }
+      lwtct<-0
+      for ( lwt in WTVAL )
+        {
+        lwtct<-lwtct+1
+        myweights <-exp( -(subdemog$deltaTime-WTVAL[lwtct])^2 / wtsigma[lwtct] )
+        myweights[ locdf$poi_DX == "Normal"  ]<-1
+        myweights[is.na(myweights)]<-0
+        myweights<-myweights/max(myweights)
+        pmdl<-lmer( myform , weights=myweights, data=(plocdf) )
+        spmdl<-summary(pmdl)$coeff
+        if ( ncol(spmdl) > 3 )
+        {
+        if ( lwtct == 1 ) {
+          permarrayD0[1,jj,perm]<-spmdl[5,4]
+          if ( nrow(smdl) > 5 ) permarrayD0[2,jj,perm]<-spmdl[6,4]
+          }
+        if ( lwtct == 2 ) {
+          permarrayD1[1,jj,perm]<-spmdl[5,4]
+          permarrayL1[1,jj,perm] <- ( spmdl[5,4] - permarrayD0[1,jj,perm] ) * -1
+          if ( nrow(smdl) > 5 ) {
+            permarrayD1[2,jj,perm]<-spmdl[6,4]
+            permarrayL1[2,jj,perm]<-( spmdl[6,4] - permarrayD0[2,jj,perm] ) * -1
+            }
+          }
+        if ( lwtct == 3 ) {
+          permarrayD2[1,jj,perm]<-spmdl[5,4]
+          permarrayL2[1,jj,perm] <- ( spmdl[5,4] - permarrayD1[1,jj,perm] ) * -1
+          if ( nrow(smdl) > 5 ) {
+            permarrayD2[2,jj,perm]<-spmdl[6,4]
+            permarrayL2[2,jj,perm]<-( spmdl[6,4] - permarrayD1[2,jj,perm] ) * -1
+            }
+          }
+        } # ncol test
+      } # lwt perm weights
+      } # nperms
+    ## done with perms, now summarize
+    dx1pD0<-sum( permarrayD0[1,jj,2:nperms] < permarrayD0[1,jj,1]  )/(nperms)
+    dx1pD1<-sum( permarrayD1[1,jj,2:nperms] < permarrayD1[1,jj,1]  )/(nperms)
+    dx1pD2<-sum( permarrayD2[1,jj,2:nperms] < permarrayD2[1,jj,1]  )/(nperms)
+    dx1pL1<-sum( permarrayL1[1,jj,2:nperms] > permarrayL1[1,jj,1]  )/(nperms)
+    dx1pL2<-sum( permarrayL2[1,jj,2:nperms] > permarrayL2[1,jj,1]  )/(nperms)
+    dx2pD0<-sum( permarrayD0[2,jj,2:nperms] < permarrayD0[2,jj,1]  )/(nperms)
+    dx2pD1<-sum( permarrayD1[2,jj,2:nperms] < permarrayD1[2,jj,1]  )/(nperms)
+    dx2pD2<-sum( permarrayD2[2,jj,2:nperms] < permarrayD2[2,jj,1]  )/(nperms)
+    dx2pL1<-sum( permarrayL1[2,jj,2:nperms] > permarrayL1[2,jj,1]  )/(nperms)
+    dx2pL2<-sum( permarrayL2[2,jj,2:nperms] > permarrayL2[2,jj,1]  )/(nperms)
+    p1a<-permarrayL1[1,jj,2:nperms]
+    p1b<-permarrayL1[1,jj,1]
+    h1<-hist( p1a*(-1), xlim=c(0,max(abs(c(p1b,p1a)))), col=rgb(1,0,0,0.5) )
+    h2<-hist( rep(p1b*(-1),100),breaks=c(p1b*-0.99,p1b*-1.01),
+              add=T, col=rgb(0,0,1,0.5) )
+    if ( verbose == 1 ) {
+      print( names(roisrch)[jj] )
+      print( paste( "PERMD0: dx1pD0", dx1pD0, "dx2pD0", dx2pD0  )  )
+      print( paste( "PERMD1: dx1pD1", dx1pD1, "dx2pD1", dx2pD1  )  )
+      print( paste( "PERMD2: dx1pD2", dx1pD2, "dx2pD2", dx2pD2  )  )
+      print( paste( "PERML1: dx1pL1", dx1pL1, "dx2pL1", dx2pL1  )  )
+      print( paste( "PERML2: dx1pL2", dx1pL2, "dx2pL2", dx2pL2  )  )
+      pvdf1[jj,2]<-dx1pD0
+      pvdf1[jj,3]<-dx1pD1
+      pvdf1[jj,4]<-dx1pD2
+      pvdf1[jj,5]<-dx1pL1
+      pvdf1[jj,6]<-dx1pL2
+      pvdf2[jj,2]<-dx2pD0
+      pvdf2[jj,3]<-dx2pD1
+      pvdf2[jj,4]<-dx2pD2
+      pvdf2[jj,5]<-dx2pL1
+      pvdf2[jj,6]<-dx2pL2
+
+      valdf1[jj,2]<-mean(permarrayD0[1,jj,2:nperms]) - permarrayD0[1,jj,1]
+      valdf1[jj,3]<-mean(permarrayD1[1,jj,2:nperms]) - permarrayD1[1,jj,1]
+      valdf1[jj,4]<-mean(permarrayD2[1,jj,2:nperms]) - permarrayD2[1,jj,1]
+      valdf1[jj,5]<-(mean(permarrayL1[1,jj,2:nperms])-permarrayL1[1,jj,1])*(-1)
+      valdf1[jj,6]<-(mean(permarrayL2[1,jj,2:nperms])-permarrayL2[1,jj,1])*(-1)
+
+      valdf2[jj,2]<-mean(permarrayD0[2,jj,2:nperms]) - permarrayD0[2,jj,1]
+      valdf2[jj,3]<-mean(permarrayD1[2,jj,2:nperms]) - permarrayD1[2,jj,1]
+      valdf2[jj,4]<-mean(permarrayD2[2,jj,2:nperms]) - permarrayD2[2,jj,1]
+      valdf2[jj,5]<-(mean(permarrayL1[2,jj,2:nperms])-permarrayL1[2,jj,1])*(-1)
+      valdf2[jj,6]<-(mean(permarrayL2[2,jj,2:nperms])-permarrayL2[2,jj,1])*(-1)
+      }
+    } # na check
+  } # roiloop
+```
+
+```{r writeout,echo=FALSE}
+write.csv( pvdf1, paste(outdir,'/pvdf1.csv',sep='') )
+write.csv( pvdf2, paste(outdir,'/pvdf2.csv',sep='') )
+write.csv( valdf1, paste(outdir,'/valdf1.csv',sep='') )
+write.csv( valdf2, paste(outdir,'/valdf2.csv',sep='') )
+```
+
+```{r visres,results='asis',echo=FALSE}
+sigth<-0.1
+ctarr<-data.frame( dx=c("mci","ad"),
+  baseline=c(0,0),
+  duration1=c(0,0),
+  duration2=c(0,0),
+  ddur1base=c(0,0),
+  ddur2base=c(0,0)
+  )
+ind<-1
+stageFunction<-function( dxl, b, x, ind=1, sigth=NA, k, opt=1 )
+  {
+  if ( opt == 1 ) {
+      refval  <- x[dxl,k,  ind]
+      permval <- x[dxl,k, -ind]
+      return( abs(refval) - mean(abs(permval) ) + b )
+    } else {
+      refval  <- x[dxl,k,  ind]
+      permval <- x[dxl,k, -ind]
+#      return( sum( abs(refval) > abs(permval) ) + b )
+      return( sum( refval > permval)  + b )
+    }
+  }
+opter<-1
+for ( dx in 1:2 ) {
+  jj<-0
+  for ( roival in roisrch )
+    {
+    jj<-jj+1
+    ctarr[dx,2]<-stageFunction( dx, ctarr[dx,2], permarrayD0, k=jj, opt=opter )
+    ctarr[dx,3]<-stageFunction( dx, ctarr[dx,3], permarrayD1, k=jj, opt=opter )
+    ctarr[dx,4]<-stageFunction( dx, ctarr[dx,4], permarrayD2, k=jj, opt=opter )
+    ctarr[dx,5]<-stageFunction( dx, ctarr[dx,5], permarrayL1, k=jj, opt=opter )
+    ctarr[dx,6]<-stageFunction( dx, ctarr[dx,6], permarrayL2, k=jj, opt=opter )
+    }
+  }
+ctarr2<-ctarr
+ctarr2[,2:ncol(ctarr)]<-0
+opter<-2
+for ( dx in 1:2 ) {
+  for (k in roisrch ) # count D0 values
+    {
+    ctarr2[dx,2]<-stageFunction( dx, ctarr2[dx,2], permarrayD0, k=jj, opt=opter )
+    ctarr2[dx,3]<-stageFunction( dx, ctarr2[dx,3], permarrayD1, k=jj, opt=opter )
+    ctarr2[dx,4]<-stageFunction( dx, ctarr2[dx,4], permarrayD2, k=jj, opt=opter )
+    ctarr2[dx,5]<-stageFunction( dx, ctarr2[dx,5], permarrayL1*(-1), k=jj, opt=opter )
+    ctarr2[dx,6]<-stageFunction( dx, ctarr2[dx,6], permarrayL2*(-1), k=jj, opt=opter )
+    }
+  }
+kable( ctarr , caption = "Summary significance.", padding = 0, digits = 3 )
+kable( ctarr2 , caption = "Summary significance.", padding = 0, digits = 3 )
+```
+
+
+Demographics
+```{r, results='asis',echo=FALSE}
+tq<-function(x,n=100){ round(x*n)/n }
+tf<-function(x,f1=mean,f2=sd) {
+paste( " ",tq( f1(x,na.rm=T)) , "/", tq( f2( x, na.rm=T ) ) )
+}
+ageonset<-subdemog$ageAtBaseline[ subdemog$deltaTime == 0 ]
+summdemog<-data.frame(
+  Group=c( "control","mci","ad") ,
+  N_subs=c( sum(mydx=="Normal" & locdf$poi_dTime == 0,na.rm=T),
+            sum(mydx=="MCI" & locdf$poi_dTime == 0,na.rm=T),
+            sum(mydx=="AD" & locdf$poi_dTime == 0,na.rm=T)),
+  N_imgs=c( sum(mydx=="Normal"), sum(mydx=="MCI"), sum(mydx=="AD")),
+  Male= c(
+    sum( locdf$Sex[mydx=="Normal" & locdf$poi_dTime == 0] == "M",na.rm=T ),
+    sum( locdf$Sex[mydx=="MCI" & locdf$poi_dTime == 0] == "M",na.rm=T ),
+    sum( locdf$Sex[mydx=="AD" & locdf$poi_dTime == 0] == "M",na.rm=T ) ),
+  AgeAtBase=
+    c(tf( locdf$Age[mydx=="Normal" & locdf$poi_dTime == 0] ),
+      tf( locdf$Age[mydx=="MCI" & locdf$poi_dTime == 0] ),
+      tf( locdf$Age[mydx=="AD" & locdf$poi_dTime == 0] ) ),
+  MMSE=c(
+    tf( subdemog$MMSCORE[mydx=="Normal" & locdf$poi_dTime == 0] ),
+    tf( subdemog$MMSCORE[mydx=="MCI" & locdf$poi_dTime == 0] ),
+    tf( subdemog$MMSCORE[mydx=="AD" & locdf$poi_dTime == 0] ) ),
+  DeltaTime=c(
+    tf( locdf$poi_dTime[mydx=="Normal"]  ),
+    tf( locdf$poi_dTime[mydx=="MCI"]  ),
+    tf( locdf$poi_dTime[mydx=="AD"]  ) ),
+  MedFoll=c(
+    median( table( locdf$sId[ mydx=="Normal" ] )[  table( locdf$sId[ mydx=="Normal" ] ) > 0]  ),
+    median( table( locdf$sId[ mydx=="MCI" ] )[  table( locdf$sId[ mydx=="MCI" ] ) > 0]  ),
+    median( table( locdf$sId[ mydx=="AD" ] )[  table( locdf$sId[ mydx=="AD" ] ) > 0]  ) )
+#  CDGLOBAL=c( " .", " bvFTD=5", " bvFTD=7 / PPA=14" )
+  )
+# table(mydx[ mydx=="MCI" &  locdf$poi_dTime == 0 ])
+# table(mydx[ mydx=="AD" &  locdf$poi_dTime == 0 ])
+kable( summdemog , caption = "Subject demographics. MedFoll indicates median number of follow-up visits.", padding = 0, digits = 3 )
+```
+
+
+## Material and Procedures
