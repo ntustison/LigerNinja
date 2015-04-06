@@ -179,7 +179,7 @@ jj<-0
 for ( roival in roisrch )
   {
   jj<-jj+1
-  imging<-antsrimpute( myroidf[,jj] ) # FIXME check this
+  imging<-antsrimpute( myroidf[,roival] ) # FIXME check this
   if ( ! any(is.na(imging)) )
   {
   locdf<-data.frame( img=imging, Sex=subdemog$SEX,
